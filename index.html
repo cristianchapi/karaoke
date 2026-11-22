@@ -232,6 +232,19 @@ function spread(list,prev){
 function assign(){
   const byG={};
   S.slips.filter(s=>s.status!=='skipped').sort((a,b)=>a.t-b.t).forEach(s=>{(byG[s.g]=byG[s.g]||[]).push(s);});
+  // Dentro de cada mesa: primero lo ya cantado (en el orden en que se cantó) y luego lo pendiente.
+  // Entre lo pendiente, quien aún no cantó va antes que quien repite: se ordena por número de tema de esa persona y luego por llegada.
+  Object.keys(byG).forEach(key=>{
+    const all=byG[key];
+    const dn=all.filter(s=>s.status==='done').sort((a,b)=>(a.dt-b.dt)||(a.t-b.t));
+    const qd=all.filter(s=>s.status!=='done');
+    const cnt={};
+    const nk=s=>(s.nombre||'').trim().toLowerCase();
+    dn.forEach(s=>{const n=nk(s);if(n)cnt[n]=(cnt[n]||0)+1;});
+    qd.forEach(s=>{const n=nk(s);if(!n){s._r=1;return;}cnt[n]=(cnt[n]||0)+1;s._r=cnt[n];});
+    qd.sort((a,b)=>(a._r-b._r)||(a.t-b.t));
+    byG[key]=dn.concat(qd);
+  });
   const dones=S.slips.filter(s=>s.status==='done');
   const info={};
   Object.keys(byG).forEach(key=>{
@@ -270,7 +283,7 @@ function compute(){
       // El lugar de cada mesa lo marca el momento en que quedó lista: la hora de su hoja, o la de su último "Cantó" si es posterior.
       const key={};order.forEach(g=>{key[g]=Math.max(by[g][0].t,ld[g]||0);});
       order.sort((a,b)=>key[a]-key[b]);
-      order.forEach(g=>{by[g]=spread(by[g],'');});
+      order.forEach(g=>{by[g]=spread(by[g].slice().sort((x,y)=>x.k-y.k),'');});
       let left=list.length;
       while(left>0){
         order.forEach(g=>{const n=by[g].splice(0,size);n.forEach(s=>target.push(s));left-=n.length;});
@@ -283,7 +296,7 @@ function compute(){
     const lastG=done.length?done[0].g:null;
     const lastB=done.length?done[0].b:null;
     const inCourse=s=>s.g===lastG&&s.b===lastB;
-    spread(el.filter(inCourse).sort((a,b)=>a.t-b.t),done.length?nm(done[0]):'').forEach(s=>out.push(s));
+    spread(el.filter(inCourse).sort((a,b)=>a.k-b.k),done.length?nm(done[0]):'').forEach(s=>out.push(s));
     const rest=el.filter(s=>!inCourse(s));
     // Las mesas nuevas (que aún no cantaron) van primero. Las que ya cantaron van después, la que lleva más tiempo sin cantar primero.
     // Un bloque ya ubicado no baja por el paso del tiempo, solo por la llegada de una mesa nueva.
@@ -296,8 +309,8 @@ function compute(){
     const ranks=[];
     Object.keys(bg).forEach(g=>{
       Object.keys(bg[g]).map(Number).sort((a,b)=>a-b).forEach((b,r)=>{
-        const sl=bg[g][b].sort((x,y)=>x.t-y.t);
-        (ranks[r]=ranks[r]||[]).push({g:+g,t:Math.max(sl[0].t,ld[+g]||0),sl:spread(sl,'')});
+        const sl=bg[g][b].sort((x,y)=>x.k-y.k);
+        (ranks[r]=ranks[r]||[]).push({g:+g,t:Math.max(Math.min(...sl.map(x=>x.t)),ld[+g]||0),sl:spread(sl,'')});
       });
     });
     let prevG=out.length?out[out.length-1].g:(done.length?done[0].g:null);

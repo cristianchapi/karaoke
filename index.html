@@ -273,20 +273,17 @@ function compute(){
   const out=[];
   const c=S.set.seguidos||1;
   if(c>1){
-    // Cada mesa canta hasta c temas seguidos en su turno. El turno de cada mesa lo fija la hora de su primera hoja.
-    const ld={};done.forEach(s=>{if(!(s.g in ld))ld[s.g]=s.dt;});
-    const build=(list,size,target)=>{
-      target=target||out;
+    // Cada mesa canta hasta c temas seguidos en su turno. Las mesas forman un ciclo por orden de llegada (id del grupo).
+    // La hora de los pedidos y la cantidad de temas ya cantados no cambian el lugar de una mesa en el ciclo.
+    const build=(list,size,order)=>{
       size=size||c;
-      const by={},order=[];
-      list.slice().sort((a,b)=>a.t-b.t).forEach(s=>{if(!by[s.g]){by[s.g]=[];order.push(s.g);}by[s.g].push(s);});
-      // El lugar de cada mesa lo marca el momento en que quedó lista: la hora de su hoja, o la de su último "Cantó" si es posterior.
-      const key={};order.forEach(g=>{key[g]=Math.max(by[g][0].t,ld[g]||0);});
-      order.sort((a,b)=>key[a]-key[b]);
-      order.forEach(g=>{by[g]=spread(by[g].slice().sort((x,y)=>x.k-y.k),'');});
+      const by={};
+      list.slice().sort((a,b)=>a.t-b.t).forEach(s=>{(by[s.g]=by[s.g]||[]).push(s);});
+      const gs=order||Object.keys(by).map(Number).sort((a,b)=>a-b);
+      gs.forEach(g=>{if(by[g])by[g]=spread(by[g].slice().sort((x,y)=>x.k-y.k),'');});
       let left=list.length;
       while(left>0){
-        order.forEach(g=>{const n=by[g].splice(0,size);n.forEach(s=>target.push(s));left-=n.length;});
+        gs.forEach(g=>{if(!by[g])return;const n=by[g].splice(0,size);n.forEach(s=>out.push(s));left-=n.length;});
       }
     };
     // Los bloques no se cortan. Orden: 1) lo que falta del bloque en curso (mesa del último "Cantó"),
@@ -298,24 +295,29 @@ function compute(){
     const inCourse=s=>s.g===lastG&&s.b===lastB;
     spread(el.filter(inCourse).sort((a,b)=>a.k-b.k),done.length?nm(done[0]):'').forEach(s=>out.push(s));
     const rest=el.filter(s=>!inCourse(s));
-    // Las mesas nuevas (que aún no cantaron) van primero. Las que ya cantaron van después, la que lleva más tiempo sin cantar primero.
-    // Un bloque ya ubicado no baja por el paso del tiempo, solo por la llegada de una mesa nueva.
+    // Las mesas nuevas (que aún no cantaron) van primero, en orden de llegada.
+    // Las que ya cantaron siguen el ciclo: continúa la mesa que llegó después de la última que cantó y, al terminar, se vuelve a empezar.
+    const sung=rest.filter(s=>doneG.has(s.g));
+    const ids=[...new Set(sung.map(s=>s.g))].sort((x,y)=>x-y);
+    const cyc=lastG==null?ids:ids.filter(x=>x>lastG).concat(ids.filter(x=>x<=lastG));
     build(rest.filter(s=>!doneG.has(s.g)));
-    build(rest.filter(s=>doneG.has(s.g)));
+    build(sung,null,cyc);
     // Turnos siguientes: al final. Cada turno de una mesa es un bloque (hasta su cupo, seguidos).
     // Primero los bloques del turno 2 de todas las mesas, luego los del turno 3, etc. Un bloque no va pegado al de la misma mesa si hay otra opción.
+    // Cada vuelta de turnos siguientes repite el orden de mesas de la primera vuelta.
+    const gOrder=[];out.forEach(s=>{if(!gOrder.includes(s.g))gOrder.push(s.g);});
     const bg={};
     q.filter(s=>s.extra).forEach(s=>{const m=bg[s.g]=bg[s.g]||{};(m[s.b]=m[s.b]||[]).push(s);});
     const ranks=[];
     Object.keys(bg).forEach(g=>{
       Object.keys(bg[g]).map(Number).sort((a,b)=>a-b).forEach((b,r)=>{
         const sl=bg[g][b].sort((x,y)=>x.k-y.k);
-        (ranks[r]=ranks[r]||[]).push({g:+g,t:Math.max(Math.min(...sl.map(x=>x.t)),ld[+g]||0),sl:spread(sl,'')});
+        (ranks[r]=ranks[r]||[]).push({g:+g,sl:spread(sl,'')});
       });
     });
     let prevG=out.length?out[out.length-1].g:(done.length?done[0].g:null);
     ranks.forEach(list=>{
-      const rem=list.slice().sort((x,y)=>x.t-y.t);
+      const rem=list.slice().sort((x,y)=>gOrder.indexOf(x.g)-gOrder.indexOf(y.g));
       while(rem.length){
         let i=rem.findIndex(bk=>bk.g!==prevG);if(i<0)i=0;
         const bk=rem.splice(i,1)[0];bk.sl.forEach(s=>out.push(s));prevG=bk.g;

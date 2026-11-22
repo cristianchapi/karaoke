@@ -61,7 +61,7 @@ h2{font-size:15px;margin:18px 0 8px;color:var(--mu);font-weight:600}
 </head>
 <body>
 <header>
-  <h1>Cola de karaoke <span style="font-size:11px;font-weight:400;color:var(--mu)">ciclo v2</span></h1>
+  <h1>Cola de karaoke <span style="font-size:11px;font-weight:400;color:var(--mu)">ciclo v3</span></h1>
   <div id="next"></div>
   <div id="sync" style="font-size:12px;color:var(--mu);margin-top:4px"></div>
   <nav id="nav"></nav>
@@ -296,10 +296,11 @@ function compute(){
     spread(el.filter(inCourse).sort((a,b)=>a.k-b.k),done.length?nm(done[0]):'').forEach(s=>out.push(s));
     const rest=el.filter(s=>!inCourse(s));
     // Las mesas nuevas (que aún no cantaron) van primero, en orden de llegada.
-    // Las que ya cantaron siguen el ciclo: continúa la mesa que llegó después de la última que cantó y, al terminar, se vuelve a empezar.
+    // Las que ya cantaron siguen el ciclo según el orden en que cantaron por última vez: la que cantó hace más rato va primero.
+    // Una mesa que acaba de cantar pasa al final del ciclo, aunque haya llegado antes que las que esperan.
+    const ld={};done.forEach(s=>{if(!(s.g in ld))ld[s.g]=s.dt;});
     const sung=rest.filter(s=>doneG.has(s.g));
-    const ids=[...new Set(sung.map(s=>s.g))].sort((x,y)=>x-y);
-    const cyc=lastG==null?ids:ids.filter(x=>x>lastG).concat(ids.filter(x=>x<=lastG));
+    const cyc=[...new Set(sung.map(s=>s.g))].sort((x,y)=>(ld[x]-ld[y])||(x-y));
     build(rest.filter(s=>!doneG.has(s.g)));
     build(sung,null,cyc);
     // Turnos siguientes: al final. Cada turno de una mesa es un bloque (hasta su cupo, seguidos).
